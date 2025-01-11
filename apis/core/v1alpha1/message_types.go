@@ -27,12 +27,12 @@ import (
 
 // MessageParameters are the configurable fields of a Message.
 type MessageParameters struct {
-	ConfigurableField string `json:"configurableField"`
+	content string `json:"content"`
 }
 
 // MessageObservation are the observable fields of a Message.
 type MessageObservation struct {
-	ObservableField string `json:"observableField,omitempty"`
+	content string `json:"content"`
 }
 
 // A MessageSpec defines the desired state of a Message.

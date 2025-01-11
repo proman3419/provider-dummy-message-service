@@ -4,18 +4,18 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.14.0
-  name: mytypes.sample.dummymessageservice.crossplane.io
+  name: messages.core.dummymessageservice.crossplane.io
 spec:
-  group: sample.dummymessageservice.crossplane.io
+  group: core.dummymessageservice.crossplane.io
   names:
     categories:
     - crossplane
     - managed
     - dummymessageservice
-    kind: MyType
-    listKind: MyTypeList
-    plural: mytypes
-    singular: mytype
+    kind: Message
+    listKind: MessageList
+    plural: messages
+    singular: message
   scope: Cluster
   versions:
   - additionalPrinterColumns:
@@ -34,7 +34,7 @@ spec:
     name: v1alpha1
     schema:
       openAPIV3Schema:
-        description: A MyType is an example API type.
+        description: A Message is an example API type.
         properties:
           apiVersion:
             description: |-
@@ -54,7 +54,7 @@ spec:
           metadata:
             type: object
           spec:
-            description: A MyTypeSpec defines the desired state of a MyType.
+            description: A MessageSpec defines the desired state of a Message.
             properties:
               deletionPolicy:
                 default: Delete
@@ -71,12 +71,12 @@ spec:
                 - Delete
                 type: string
               forProvider:
-                description: MyTypeParameters are the configurable fields of a MyType.
+                description: MessageParameters are the configurable fields of a Message.
                 properties:
-                  configurableField:
+                  content:
                     type: string
                 required:
-                - configurableField
+                - content
                 type: object
               managementPolicies:
                 default:
@@ -246,17 +246,15 @@ spec:
             - forProvider
             type: object
           status:
-            description: A MyTypeStatus represents the observed state of a MyType.
+            description: A MessageStatus represents the observed state of a Message.
             properties:
               atProvider:
-                description: MyTypeObservation are the observable fields of a MyType.
+                description: MessageObservation are the observable fields of a Message.
                 properties:
-                  configurableField:
-                    type: string
-                  observableField:
+                  content:
                     type: string
                 required:
-                - configurableField
+                - content
                 type: object
               conditions:
                 description: Conditions of the resource.
