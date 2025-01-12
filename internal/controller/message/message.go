@@ -18,7 +18,11 @@ package message
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"io/ioutil"
+	"log"
+	"net/http"
 
 	"github.com/pkg/errors"
 	"k8s.io/apimachinery/pkg/types"
@@ -38,7 +42,7 @@ import (
 )
 
 const (
-	errNotMessage    = "managed resource is not a Message custom resource"
+	errNotMessage   = "managed resource is not a Message custom resource"
 	errTrackPCUsage = "cannot track ProviderConfig usage"
 	errGetPC        = "cannot get ProviderConfig"
 	errGetCreds     = "cannot get credentials"
@@ -46,11 +50,15 @@ const (
 	errNewClient = "cannot create new Service"
 )
 
+// NoOpService -> DummyMessageService
 // A NoOpService does nothing.
-type NoOpService struct{}
+type DummyMessageService struct {
+}
 
 var (
-	newNoOpService = func(_ []byte) (interface{}, error) { return &NoOpService{}, nil }
+	newDummyMessageService = func(_ []byte) (*DummyMessageService, error) {
+		return &DummyMessageService{}, nil
+	}
 )
 
 // Setup adds a controller that reconciles Message managed resources.
@@ -67,7 +75,7 @@ func Setup(mgr ctrl.Manager, o controller.Options) error {
 		managed.WithExternalConnecter(&connector{
 			kube:         mgr.GetClient(),
 			usage:        resource.NewProviderConfigUsageTracker(mgr.GetClient(), &apisv1alpha1.ProviderConfigUsage{}),
-			newServiceFn: newNoOpService}),
+			newServiceFn: newDummyMessageService}),
 		managed.WithLogger(o.Logger.WithValues("controller", name)),
 		managed.WithPollInterval(o.PollInterval),
 		managed.WithRecorder(event.NewAPIRecorder(mgr.GetEventRecorderFor(name))),
@@ -86,7 +94,7 @@ func Setup(mgr ctrl.Manager, o controller.Options) error {
 type connector struct {
 	kube         client.Client
 	usage        resource.Tracker
-	newServiceFn func(creds []byte) (interface{}, error)
+	newServiceFn func(creds []byte) (*DummyMessageService, error)
 }
 
 // Connect typically produces an ExternalClient by:
@@ -128,7 +136,16 @@ func (c *connector) Connect(ctx context.Context, mg resource.Managed) (managed.E
 type external struct {
 	// A 'client' used to connect to the external resource API. In practice this
 	// would be something like an AWS SDK client.
-	service interface{}
+	service *DummyMessageService
+}
+
+type MessageRS struct {
+	Id      int    `json:"id"`
+	Content string `json:"content"`
+}
+
+type MessagesRS struct {
+	Messages []MessageRS `json:"messages"`
 }
 
 func (c *external) Observe(ctx context.Context, mg resource.Managed) (managed.ExternalObservation, error) {
@@ -137,24 +154,55 @@ func (c *external) Observe(ctx context.Context, mg resource.Managed) (managed.Ex
 		return managed.ExternalObservation{}, errors.New(errNotMessage)
 	}
 
-	// These fmt statements should be removed in the real implementation.
-	fmt.Printf("Observing: %+v", cr)
+	// 1. Call GET /messages
+	namespace := "dummy-message-service"
+	serviceName := "dummy-message-service-svc"
+	apiPort := 8000
+	apiUrl := fmt.Sprintf("http://%s.%s.svc.cluster.local:%d", serviceName, namespace, apiPort)
+	resp, err := http.Get(fmt.Sprintf("%s/messages", apiUrl))
+	if err != nil {
+		log.Printf("Failed to send GET /messages: %v", err)
+		return managed.ExternalObservation{ResourceExists: false}, err
+	}
+	defer resp.Body.Close()
+	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		log.Printf("Failed to send GET /messages: %v", err)
+		return managed.ExternalObservation{ResourceExists: false}, err
+	}
 
-	return managed.ExternalObservation{
-		// Return false when the external resource does not exist. This lets
-		// the managed resource reconciler know that it needs to call Create to
-		// (re)create the resource, or that it has successfully been deleted.
-		ResourceExists: true,
+	// 2. Parse the JSON response
+	var messagesRS MessagesRS
+	err = json.Unmarshal(body, &messagesRS)
+	if err != nil {
+		log.Printf("Failed to parse JSON: %v", err)
+		return managed.ExternalObservation{ResourceExists: false}, err
+	}
 
-		// Return false when the external resource exists, but it not up to date
-		// with the desired managed resource state. This lets the managed
-		// resource reconciler know that it needs to call Update.
-		ResourceUpToDate: true,
+	// 3. Iterate through the messages and print them
+	contentToObserve := cr.Spec.ForProvider.Content
+	for _, messageRS := range messagesRS.Messages {
+		if messageRS.Content == cr.Spec.ForProvider.Content {
+			log.Printf("Observed a message with content: '%s'", contentToObserve)
+			return managed.ExternalObservation{
+				// Return false when the external resource does not exist. This lets
+				// the managed resource reconciler know that it needs to call Create to
+				// (re)create the resource, or that it has successfully been deleted.
+				ResourceExists: true,
 
-		// Return any details that may be required to connect to the external
-		// resource. These will be stored as the connection secret.
-		ConnectionDetails: managed.ConnectionDetails{},
-	}, nil
+				// Return false when the external resource exists, but it not up to date
+				// with the desired managed resource state. This lets the managed
+				// resource reconciler know that it needs to call Update.
+				ResourceUpToDate: true,
+
+				// Return any details that may be required to connect to the external
+				// resource. These will be stored as the connection secret.
+				ConnectionDetails: managed.ConnectionDetails{},
+			}, nil
+		}
+	}
+	log.Printf("Didn't observe a message with content: '%s'", contentToObserve)
+	return managed.ExternalObservation{ResourceExists: false}, err
 }
 
 func (c *external) Create(ctx context.Context, mg resource.Managed) (managed.ExternalCreation, error) {
