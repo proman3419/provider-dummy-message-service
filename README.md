@@ -36,3 +36,6 @@ guide may also be of use.
 
 [CONTRIBUTING.md]: https://github.com/crossplane/crossplane/blob/master/CONTRIBUTING.md
 [provider-dev]: https://github.com/crossplane/crossplane/blob/master/contributing/guide-provider-development.md
+
+## Sources
+- [Creating Custom Providers in Crossplane](https://medium.com/@dan.morita/creating-custom-crossplane-providers-ade76dcc571a)

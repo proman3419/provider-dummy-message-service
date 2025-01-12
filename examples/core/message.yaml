@@ -1,0 +1,10 @@
+apiVersion: core.dummymessageservice.crossplane.io/v1alpha1
+kind: Message
+metadata:
+  name: example
+spec:
+  forProvider:
+    id: -1 # Invalid value, will be overwritten once the external resource is created
+    content: "persist me"
+  providerConfigRef:
+    name: example

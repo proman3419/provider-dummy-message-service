@@ -9,8 +9,7 @@ metadata:
   namespace: crossplane-system
   name: example-provider-secret
 type: Opaque
-data:
-  # credentials: BASE64ENCODED_PROVIDER_CREDS
+data: {} # No auth
 ---
 apiVersion: dummymessageservice.crossplane.io/v1alpha1
 kind: ProviderConfig

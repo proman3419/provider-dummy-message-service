@@ -75,8 +75,11 @@ spec:
                 properties:
                   content:
                     type: string
+                  id:
+                    type: integer
                 required:
                 - content
+                - id
                 type: object
               managementPolicies:
                 default:
@@ -253,8 +256,11 @@ spec:
                 properties:
                   content:
                     type: string
+                  id:
+                    type: integer
                 required:
                 - content
+                - id
                 type: object
               conditions:
                 description: Conditions of the resource.
