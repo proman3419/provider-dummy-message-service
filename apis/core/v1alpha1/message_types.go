@@ -27,11 +27,13 @@ import (
 
 // MessageParameters are the configurable fields of a Message.
 type MessageParameters struct {
+	Id      int    `json:"id"`
 	Content string `json:"content"`
 }
 
 // MessageObservation are the observable fields of a Message.
 type MessageObservation struct {
+	Id      int    `json:"id"`
 	Content string `json:"content"`
 }
 

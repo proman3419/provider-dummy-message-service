@@ -17,6 +17,7 @@ limitations under the License.
 package message
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -149,17 +150,22 @@ type Messages struct {
 	Messages []Message `json:"messages"`
 }
 
+func getApiUrl() string {
+	namespace := "dummy-message-service"
+	serviceName := "dummy-message-service-svc"
+	apiPort := 8000
+	return fmt.Sprintf("http://%s.%s.svc.cluster.local:%d", serviceName, namespace, apiPort)
+}
+
 func (c *external) Observe(ctx context.Context, mg resource.Managed) (managed.ExternalObservation, error) {
 	cr, ok := mg.(*v1alpha1.Message)
 	if !ok {
 		return managed.ExternalObservation{}, errors.New(errNotMessage)
 	}
 
-	namespace := "dummy-message-service"
-	serviceName := "dummy-message-service-svc"
-	apiPort := 8000
-	apiUrl := fmt.Sprintf("http://%s.%s.svc.cluster.local:%d", serviceName, namespace, apiPort)
-	resp, err := http.Get(fmt.Sprintf("%s/messages", apiUrl))
+	messageToObserve := Message{Content: cr.Spec.ForProvider.Content}
+
+	resp, err := http.Get(fmt.Sprintf("%s/messages", getApiUrl()))
 	if err != nil {
 		log.Printf("Failed to send GET /messages: %v\n", err)
 		return managed.ExternalObservation{ResourceExists: false}, err
@@ -178,7 +184,6 @@ func (c *external) Observe(ctx context.Context, mg resource.Managed) (managed.Ex
 		return managed.ExternalObservation{ResourceExists: false}, err
 	}
 
-	messageToObserve := Message{Content: cr.Spec.ForProvider.Content}
 	for _, message := range messages.Messages {
 		if message.Content == messageToObserve.Content {
 			log.Printf("Observed a message with content: '%s'\n", messageToObserve.Content)
@@ -211,11 +216,7 @@ func (c *external) Create(ctx context.Context, mg resource.Managed) (managed.Ext
 
 	messageToCreate := Message{Content: cr.Spec.ForProvider.Content}
 
-	namespace := "dummy-message-service"
-	serviceName := "dummy-message-service-svc"
-	apiPort := 8000
-	apiUrl := fmt.Sprintf("http://%s.%s.svc.cluster.local:%d", serviceName, namespace, apiPort)
-	resp, err := http.Post(fmt.Sprintf("%s/message?content=%s", apiUrl, url.QueryEscape(messageToCreate.Content)),
+	resp, err := http.Post(fmt.Sprintf("%s/message?content=%s", getApiUrl(), url.QueryEscape(messageToCreate.Content)),
 		"application/json", nil)
 	if err != nil {
 		log.Printf("Failed to send POST /message: %v\n", err)
@@ -234,6 +235,7 @@ func (c *external) Create(ctx context.Context, mg resource.Managed) (managed.Ext
 	}
 	log.Printf("Created message: %+v\n", createdMessage)
 
+	cr.Status.AtProvider.Id = createdMessage.Id
 	cr.Status.AtProvider.Content = createdMessage.Content
 
 	return managed.ExternalCreation{
@@ -264,7 +266,27 @@ func (c *external) Delete(ctx context.Context, mg resource.Managed) error {
 		return errors.New(errNotMessage)
 	}
 
-	fmt.Println("Deleting: %+v", cr)
+	messageToDelete := Message{Id: cr.Spec.ForProvider.Id}
+
+	req, err := http.NewRequest("DELETE", fmt.Sprintf("%s/message?id_=%d", getApiUrl(), messageToDelete.Id),
+		bytes.NewBuffer([]byte(nil)))
+	if err != nil {
+		log.Printf("Failed to create request: %v", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	httpClient := &http.Client{}
+	resp, err := httpClient.Do(req)
+	if err != nil {
+		log.Printf("Failed to send DELETE /message: %v", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		log.Printf("Failed to send DELETE /message: %v\n", err)
+	}
+	log.Printf("Response: %s\n", body)
 
 	return nil
 }
