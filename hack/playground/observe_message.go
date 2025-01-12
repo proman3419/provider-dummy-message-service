@@ -8,46 +8,35 @@ import (
 	"net/http"
 )
 
-type MessageObservation struct {
-	Content string `json:"content"`
-}
-
-type MessageResponse struct {
-	Messages []MessageObservation `json:"messages"`
-}
-
 func main() {
-	messageToObserve := MessageObservation{Content: "persist this"}
+	messageToObserve := Message{Content: "persist this"}
 
-	// 1. Call GET /messages
 	namespace := "dummy-message-service"
 	serviceName := "dummy-message-service-svc"
 	apiPort := 8000
 	apiUrl := fmt.Sprintf("http://%s.%s.svc.cluster.local:%d", serviceName, namespace, apiPort)
 	resp, err := http.Get(fmt.Sprintf("%s/messages", apiUrl))
 	if err != nil {
-		log.Printf("Failed to send GET /messages: %v", err)
+		log.Printf("Failed to send GET /messages: %v\n", err)
 	}
 	defer resp.Body.Close()
 	body, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
-		log.Printf("Failed to send GET /messages: %v", err)
+		log.Printf("Failed to send GET /messages: %v\n", err)
 	}
 
-	// 2. Parse the JSON response
-	var messageResponse MessageResponse
-	err = json.Unmarshal(body, &messageResponse)
+	var messages Messages
+	err = json.Unmarshal(body, &messages)
 	if err != nil {
-		log.Printf("Failed to parse JSON: %v", err)
+		log.Printf("Failed to parse JSON: %v\n", err)
 		return
 	}
 
-	// 3. Iterate through the messages and print them
-	for _, message := range messageResponse.Messages {
+	for _, message := range messages.Messages {
 		if message.Content == messageToObserve.Content {
-			log.Printf("Observed a message with content: '%s'", messageToObserve.Content)
+			log.Printf("Observed a message with content: '%s'\n", messageToObserve.Content)
 			return
 		}
 	}
-	log.Printf("Didn't observe a message with content: '%s'", messageToObserve.Content)
+	log.Printf("Didn't observe a message with content: '%s'\n", messageToObserve.Content)
 }

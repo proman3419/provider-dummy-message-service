@@ -23,6 +23,7 @@ import (
 	"io/ioutil"
 	"log"
 	"net/http"
+	"net/url"
 
 	"github.com/pkg/errors"
 	"k8s.io/apimachinery/pkg/types"
@@ -139,13 +140,13 @@ type external struct {
 	service *DummyMessageService
 }
 
-type MessageRS struct {
+type Message struct {
 	Id      int    `json:"id"`
 	Content string `json:"content"`
 }
 
-type MessagesRS struct {
-	Messages []MessageRS `json:"messages"`
+type Messages struct {
+	Messages []Message `json:"messages"`
 }
 
 func (c *external) Observe(ctx context.Context, mg resource.Managed) (managed.ExternalObservation, error) {
@@ -154,36 +155,33 @@ func (c *external) Observe(ctx context.Context, mg resource.Managed) (managed.Ex
 		return managed.ExternalObservation{}, errors.New(errNotMessage)
 	}
 
-	// 1. Call GET /messages
 	namespace := "dummy-message-service"
 	serviceName := "dummy-message-service-svc"
 	apiPort := 8000
 	apiUrl := fmt.Sprintf("http://%s.%s.svc.cluster.local:%d", serviceName, namespace, apiPort)
 	resp, err := http.Get(fmt.Sprintf("%s/messages", apiUrl))
 	if err != nil {
-		log.Printf("Failed to send GET /messages: %v", err)
+		log.Printf("Failed to send GET /messages: %v\n", err)
 		return managed.ExternalObservation{ResourceExists: false}, err
 	}
 	defer resp.Body.Close()
 	body, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
-		log.Printf("Failed to send GET /messages: %v", err)
+		log.Printf("Failed to send GET /messages: %v\n", err)
 		return managed.ExternalObservation{ResourceExists: false}, err
 	}
 
-	// 2. Parse the JSON response
-	var messagesRS MessagesRS
-	err = json.Unmarshal(body, &messagesRS)
+	var messages Messages
+	err = json.Unmarshal(body, &messages)
 	if err != nil {
-		log.Printf("Failed to parse JSON: %v", err)
+		log.Printf("Failed to parse JSON: %v\n", err)
 		return managed.ExternalObservation{ResourceExists: false}, err
 	}
 
-	// 3. Iterate through the messages and print them
-	contentToObserve := cr.Spec.ForProvider.Content
-	for _, messageRS := range messagesRS.Messages {
-		if messageRS.Content == cr.Spec.ForProvider.Content {
-			log.Printf("Observed a message with content: '%s'", contentToObserve)
+	messageToObserve := Message{Content: cr.Spec.ForProvider.Content}
+	for _, message := range messages.Messages {
+		if message.Content == messageToObserve.Content {
+			log.Printf("Observed a message with content: '%s'\n", messageToObserve.Content)
 			return managed.ExternalObservation{
 				// Return false when the external resource does not exist. This lets
 				// the managed resource reconciler know that it needs to call Create to
@@ -201,7 +199,7 @@ func (c *external) Observe(ctx context.Context, mg resource.Managed) (managed.Ex
 			}, nil
 		}
 	}
-	log.Printf("Didn't observe a message with content: '%s'", contentToObserve)
+	log.Printf("Didn't observe a message with content: '%s'\n", messageToObserve.Content)
 	return managed.ExternalObservation{ResourceExists: false}, err
 }
 
@@ -211,7 +209,32 @@ func (c *external) Create(ctx context.Context, mg resource.Managed) (managed.Ext
 		return managed.ExternalCreation{}, errors.New(errNotMessage)
 	}
 
-	fmt.Printf("Creating: %+v", cr)
+	messageToCreate := Message{Content: cr.Spec.ForProvider.Content}
+
+	namespace := "dummy-message-service"
+	serviceName := "dummy-message-service-svc"
+	apiPort := 8000
+	apiUrl := fmt.Sprintf("http://%s.%s.svc.cluster.local:%d", serviceName, namespace, apiPort)
+	resp, err := http.Post(fmt.Sprintf("%s/message?content=%s", apiUrl, url.QueryEscape(messageToCreate.Content)),
+		"application/json", nil)
+	if err != nil {
+		log.Printf("Failed to send POST /message: %v\n", err)
+	}
+	defer resp.Body.Close()
+	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		log.Printf("Failed to send POST /message: %v\n", err)
+	}
+	log.Printf("Response: %s\n", body)
+
+	var createdMessage Message
+	err = json.Unmarshal([]byte(body), &createdMessage)
+	if err != nil {
+		log.Printf("Error parsing JSON: %v\n", err)
+	}
+	log.Printf("Created message: %+v\n", createdMessage)
+
+	cr.Status.AtProvider.Content = createdMessage.Content
 
 	return managed.ExternalCreation{
 		// Optionally return any details that may be required to connect to the
@@ -221,12 +244,12 @@ func (c *external) Create(ctx context.Context, mg resource.Managed) (managed.Ext
 }
 
 func (c *external) Update(ctx context.Context, mg resource.Managed) (managed.ExternalUpdate, error) {
-	cr, ok := mg.(*v1alpha1.Message)
+	_, ok := mg.(*v1alpha1.Message)
 	if !ok {
 		return managed.ExternalUpdate{}, errors.New(errNotMessage)
 	}
 
-	fmt.Printf("Updating: %+v", cr)
+	// Not covered by this demo
 
 	return managed.ExternalUpdate{
 		// Optionally return any details that may be required to connect to the
@@ -241,7 +264,7 @@ func (c *external) Delete(ctx context.Context, mg resource.Managed) error {
 		return errors.New(errNotMessage)
 	}
 
-	fmt.Printf("Deleting: %+v", cr)
+	fmt.Println("Deleting: %+v", cr)
 
 	return nil
 }
