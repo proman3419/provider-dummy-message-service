@@ -1,7 +1,7 @@
 apiVersion: meta.pkg.crossplane.io/v1alpha1
 kind: Provider
 metadata:
-  name: provider-dummymessageservice
+  name: provider-dummy-message-service
   annotations:
     meta.crossplane.io/maintainer: Crossplane Maintainers <info@crossplane.io>
     meta.crossplane.io/source: github.com/crossplane/provider-dummymessageservice

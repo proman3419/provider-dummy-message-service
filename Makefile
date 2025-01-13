@@ -102,6 +102,9 @@ dev-clean: $(KIND) $(KUBECTL)
 	@$(INFO) Deleting kind cluster
 	@$(KIND) delete cluster --name=$(PROJECT_NAME)-dev
 
+push-xpkg:
+	up xpkg push xpkg.upbound.io/$(UPBOUND_USER)/provider-dummy-message-service:$(XPKG_VER) -f $(XPKG_PATH)
+
 .PHONY: submodules fallthrough test-integration run dev dev-clean
 
 # ====================================================================================

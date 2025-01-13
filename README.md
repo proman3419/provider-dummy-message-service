@@ -27,8 +27,9 @@ with the following features that are meant to be refactored:
 5. Replace the *sample* group with your new group in apis/{provider}.go
 5. Replace the *mytype* type with your new type in internal/controller/{provider}.go
 5. Replace the default controller and ProviderConfig implementations with your own
-5. Run `make reviewable` to run code generation, linters, and tests.
-5. Run `make build` to build the provider.
+5. Run `make reviewable` to run code generation, linters, and tests. Ignore linters and tests hehe
+5. Run `make build` to build the provider. Notice the `xpkg saved to ...` line
+6. Run `make push-xpkg UPBOUND_USER=dummy XPKG_VER=v0.0.1 XPKG_PATH=/path/to/xpkg` 
 
 Refer to Crossplane's [CONTRIBUTING.md] file for more information on how the
 Crossplane community prefers to work. The [Provider Development][provider-dev]
@@ -39,3 +40,4 @@ guide may also be of use.
 
 ## Sources
 - [Creating Custom Providers in Crossplane](https://medium.com/@dan.morita/creating-custom-crossplane-providers-ade76dcc571a)
+- [Creating and Pushing Packages](https://docs.upbound.io/upbound-marketplace/packages/)
