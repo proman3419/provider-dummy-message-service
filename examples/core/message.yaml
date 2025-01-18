@@ -4,7 +4,7 @@ metadata:
   name: example
 spec:
   forProvider:
-    id: -1 # Invalid value, will be overwritten once the external resource is created
-    content: "persist me"
+    key: "key"
+    content: "content"
   providerConfigRef:
     name: example

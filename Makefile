@@ -105,6 +105,15 @@ dev-clean: $(KIND) $(KUBECTL)
 push-xpkg:
 	up xpkg push xpkg.upbound.io/$(UPBOUND_USER)/provider-dummy-message-service:$(XPKG_VER) -f $(XPKG_PATH)
 
+run-example:
+	kubectl apply -f examples/provider/provider.yaml
+	kubectl apply -f examples/provider/config.yaml
+	kubectl apply -f examples/core/message.yaml
+
+override-finalizers:
+	kubectl patch Message.core.dummymessageservice.crossplane.io example --type=merge -p '{"metadata":{"finalizers":[]}}'
+	kubectl patch ProviderConfig.dummymessageservice.crossplane.io example --type=merge -p '{"metadata":{"finalizers":[]}}'
+
 .PHONY: submodules fallthrough test-integration run dev dev-clean
 
 # ====================================================================================

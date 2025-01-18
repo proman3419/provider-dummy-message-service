@@ -141,70 +141,57 @@ type external struct {
 	service *DummyMessageService
 }
 
-type Message struct {
-	Id      int    `json:"id"`
-	Content string `json:"content"`
-}
-
-type Messages struct {
-	Messages []Message `json:"messages"`
-}
-
-func getApiUrl() string {
-	namespace := "dummy-message-service"
-	serviceName := "dummy-message-service-svc"
-	apiPort := 8000
-	return fmt.Sprintf("http://%s.%s.svc.cluster.local:%d", serviceName, namespace, apiPort)
-}
-
 func (c *external) Observe(ctx context.Context, mg resource.Managed) (managed.ExternalObservation, error) {
 	cr, ok := mg.(*v1alpha1.Message)
 	if !ok {
 		return managed.ExternalObservation{}, errors.New(errNotMessage)
 	}
 
-	messageToObserve := Message{Content: cr.Spec.ForProvider.Content}
-
-	resp, err := http.Get(fmt.Sprintf("%s/messages", getApiUrl()))
+	resp, err := http.Get(fmt.Sprintf("%s/message?key=%s", getApiUrl(), url.QueryEscape(cr.Spec.ForProvider.Key)))
 	if err != nil {
-		log.Printf("Failed to send GET /messages: %v\n", err)
+		log.Printf("Failed to send GET /message: %v\n", err)
 		return managed.ExternalObservation{ResourceExists: false}, err
 	}
 	defer resp.Body.Close()
-	body, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		log.Printf("Failed to send GET /messages: %v\n", err)
-		return managed.ExternalObservation{ResourceExists: false}, err
+
+	if resp.StatusCode == http.StatusNotFound {
+		log.Printf("GET /message returned 404 Not Found\n")
+		return managed.ExternalObservation{ResourceExists: false}, nil
 	}
 
-	var messages Messages
-	err = json.Unmarshal(body, &messages)
+	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		log.Printf("Failed to send GET /message: %v\n", err)
+		return managed.ExternalObservation{ResourceExists: false}, err
+	}
+	log.Printf("Response: %s\n", body)
+
+	var observedMessage v1alpha1.MessageObservation
+	err = json.Unmarshal(body, &observedMessage)
 	if err != nil {
 		log.Printf("Failed to parse JSON: %v\n", err)
 		return managed.ExternalObservation{ResourceExists: false}, err
 	}
 
-	for _, message := range messages.Messages {
-		if message.Content == messageToObserve.Content {
-			log.Printf("Observed a message with content: '%s'\n", messageToObserve.Content)
-			return managed.ExternalObservation{
-				// Return false when the external resource does not exist. This lets
-				// the managed resource reconciler know that it needs to call Create to
-				// (re)create the resource, or that it has successfully been deleted.
-				ResourceExists: true,
+	if observedMessage.Key == cr.Spec.ForProvider.Key && observedMessage.Content == cr.Spec.ForProvider.Content {
+		cr.Status.AtProvider.Key = observedMessage.Key
+		cr.Status.AtProvider.Content = observedMessage.Content
+		return managed.ExternalObservation{
+			// Return false when the external resource does not exist. This lets
+			// the managed resource reconciler know that it needs to call Create to
+			// (re)create the resource, or that it has successfully been deleted.
+			ResourceExists: true,
 
-				// Return false when the external resource exists, but it not up to date
-				// with the desired managed resource state. This lets the managed
-				// resource reconciler know that it needs to call Update.
-				ResourceUpToDate: true,
+			// Return false when the external resource exists, but it not up to date
+			// with the desired managed resource state. This lets the managed
+			// resource reconciler know that it needs to call Update.
+			ResourceUpToDate: true,
 
-				// Return any details that may be required to connect to the external
-				// resource. These will be stored as the connection secret.
-				ConnectionDetails: managed.ConnectionDetails{},
-			}, nil
-		}
+			// Return any details that may be required to connect to the external
+			// resource. These will be stored as the connection secret.
+			ConnectionDetails: managed.ConnectionDetails{},
+		}, nil
 	}
-	log.Printf("Didn't observe a message with content: '%s'\n", messageToObserve.Content)
 	return managed.ExternalObservation{ResourceExists: false}, err
 }
 
@@ -214,28 +201,34 @@ func (c *external) Create(ctx context.Context, mg resource.Managed) (managed.Ext
 		return managed.ExternalCreation{}, errors.New(errNotMessage)
 	}
 
-	messageToCreate := Message{Content: cr.Spec.ForProvider.Content}
+	log.Printf("Status key: '%s', Spec key: '%s'\n", cr.Status.AtProvider.Key, cr.Spec.ForProvider.Key)
+	if cr.Status.AtProvider.Key != cr.Spec.ForProvider.Key {
+		log.Printf("Deleting old message with key '%s'\n", cr.Status.AtProvider.Key)
+		deleteMessage(cr.Status.AtProvider.Key)
+	}
 
-	resp, err := http.Post(fmt.Sprintf("%s/message?content=%s", getApiUrl(), url.QueryEscape(messageToCreate.Content)),
+	resp, err := http.Post(fmt.Sprintf("%s/message?key=%s&content=%s", getApiUrl(),
+		url.QueryEscape(cr.Spec.ForProvider.Key), url.QueryEscape(cr.Spec.ForProvider.Content)),
 		"application/json", nil)
 	if err != nil {
 		log.Printf("Failed to send POST /message: %v\n", err)
 	}
 	defer resp.Body.Close()
+
 	body, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
 		log.Printf("Failed to send POST /message: %v\n", err)
 	}
 	log.Printf("Response: %s\n", body)
 
-	var createdMessage Message
+	var createdMessage v1alpha1.MessageObservation
 	err = json.Unmarshal([]byte(body), &createdMessage)
 	if err != nil {
 		log.Printf("Error parsing JSON: %v\n", err)
 	}
 	log.Printf("Created message: %+v\n", createdMessage)
 
-	cr.Status.AtProvider.Id = createdMessage.Id
+	cr.Status.AtProvider.Key = createdMessage.Key
 	cr.Status.AtProvider.Content = createdMessage.Content
 
 	return managed.ExternalCreation{
@@ -266,9 +259,20 @@ func (c *external) Delete(ctx context.Context, mg resource.Managed) error {
 		return errors.New(errNotMessage)
 	}
 
-	messageToDelete := Message{Id: cr.Spec.ForProvider.Id}
+	deleteMessage(cr.Spec.ForProvider.Key)
 
-	req, err := http.NewRequest("DELETE", fmt.Sprintf("%s/message?id_=%d", getApiUrl(), messageToDelete.Id),
+	return nil
+}
+
+func getApiUrl() string {
+	namespace := "dummy-message-service"
+	serviceName := "dummy-message-service-svc"
+	apiPort := 8000
+	return fmt.Sprintf("http://%s.%s.svc.cluster.local:%d", serviceName, namespace, apiPort)
+}
+
+func deleteMessage(key string) {
+	req, err := http.NewRequest("DELETE", fmt.Sprintf("%s/message?key=%s", getApiUrl(), key),
 		bytes.NewBuffer([]byte(nil)))
 	if err != nil {
 		log.Printf("Failed to create request: %v", err)
@@ -287,6 +291,4 @@ func (c *external) Delete(ctx context.Context, mg resource.Managed) error {
 		log.Printf("Failed to send DELETE /message: %v\n", err)
 	}
 	log.Printf("Response: %s\n", body)
-
-	return nil
 }
